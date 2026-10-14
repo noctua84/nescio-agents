@@ -1,7 +1,7 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import CheckConstraint, DateTime, Index, Text
+from sqlalchemy import CheckConstraint, DateTime, Index, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models import Base
@@ -16,7 +16,7 @@ class ReferenceLibrary(Base):
     tier: Mapped[int] = mapped_column(nullable=False)
     confidence: Mapped[float] = mapped_column(nullable=False)
     source: Mapped[str] = mapped_column(nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(tz=UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         Index("ix_reference_library_created_at", created_at),
