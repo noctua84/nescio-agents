@@ -87,6 +87,33 @@ If you see one, it is a bug.
 - **Sync only.** There is no async/await anywhere; database sessions block. Keep it that way
   unless the roadmap says otherwise.
 - SQLAlchemy 2.x declarative style with `Mapped[...]` annotations.
-- Embeddings travel as `numpy.ndarray`; `pgvector.sqlalchemy.Vector` on the ORM side.
+- **Models are dataclass-mapped.** `Base` is `MappedAsDataclass, DeclarativeBase,
+  kw_only=True, eq=False`, which gives every model a mypy-checked `__init__`. Plain
+  declarative classes get `**kw: Any`, so constructor kwargs are unchecked — that hole let an
+  `np.ndarray` into a `Mapped[list[float]]` column once already. `eq=False` is required, not
+  stylistic: the generated dataclass `__eq__` makes distinct-but-equal rows compare equal and
+  makes instances unhashable.
+
+  When adding a model or column, follow these or mypy will reject it:
+  - Database-populated columns take `init=False` — primary keys, and anything with
+    `server_default`. They are `None` until flush.
+  - A nullable column must be annotated `| None` and given `default=None`.
+  - **If a column with a `default` is declared before one without, that column needs its own
+    `kw_only=True` on the `mapped_column(...)`.** The class-level `kw_only=True` satisfies the
+    runtime but *not* mypy's dataclass field-ordering check, which still reports "Attributes
+    without a default cannot follow attributes with one". Repeating it per field is cheaper
+    than reordering columns, which would change `CREATE TABLE` output.
+  - Collection relationships take `default_factory=list`. A required many-to-one takes no
+    default, which makes the parent a mandatory constructor argument.
+  - A foreign-key column backing a relationship takes `init=False`, so the relationship is
+    the only way to set the parent (sqlalchemy#11639: with both settable, passing just the FK
+    can be silently overridden by the relationship default).
+
+  None of this affects DDL — it is Python-level only, so it needs no migration.
+- Embeddings travel as `numpy.ndarray` inside `src/clients/embedding.py`, which is the
+  similarity-math layer. The `embedding` columns are `Mapped[list[float]]`, which is
+  correct — pgvector returns a `list` on read. Convert at the write boundary with
+  `to_vector()`; do **not** pass an ndarray to a model constructor. pgvector's
+  `bind_processor` takes `Any` and would accept it silently.
 - New tests go under `tests/` and use pytest.
 - Seeding aborts if any `curated` rows already exist. Re-seeding requires clearing them first.
