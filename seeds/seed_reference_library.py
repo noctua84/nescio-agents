@@ -3,7 +3,7 @@ from typing import TypedDict
 
 from sqlalchemy import func, select
 
-from src.clients.embedding import get_embedding
+from src.clients.embedding import get_embedding, to_vector
 from src.db import session_scope
 from src.models import ReferenceLibrary
 
@@ -100,7 +100,7 @@ def seed_database() -> None:
             [
                 ReferenceLibrary(
                     prompt_text=ex["prompt"],
-                    embedding=e,
+                    embedding=to_vector(e),
                     tier=ex["tier"],
                     source=ex["source"],
                     confidence=ex["confidence"],

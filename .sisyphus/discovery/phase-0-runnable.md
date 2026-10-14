@@ -142,6 +142,35 @@ Note: all 15 rows share one `created_at`, which is correct — Postgres `now()` 
 transaction-start time and the inserts were one transaction. `clock_timestamp()` would be
 needed only if per-row ordering within a batch ever mattered.
 
+## Defect 11 — ndarray written into a `Mapped[list[float]]` column
+
+Raised by the maintainer after the PR opened. `get_embedding` returns `np.ndarray`; both
+`embedding` columns declare `Mapped[list[float]]`.
+
+The annotation is **correct and stays**: pgvector's `VECTOR.result_processor` is declared
+`-> list[float] | None`, and reading a seeded row back confirms the attribute really is a
+`list` at runtime. The seeder was the inaccurate side. `VECTOR.bind_processor` passes `Any`
+to `Vector._to_db(...)`, so an ndarray is silently accepted on write.
+
+Why no gate caught it: SQLAlchemy declarative classes get an untyped `__init__`
+(`**kw: Any`), so **constructor kwargs are unchecked**. Four probes confirmed it —
+`Model(embedding="not-a-vector")` and `Model(embedding=np.zeros(1024))` both passed mypy,
+while `instance.embedding = np.zeros(1024)` was correctly rejected. The seeder uses the
+constructor. This means `tier="banana"` would also pass mypy today.
+
+Resolution: `to_vector(a: np.ndarray) -> list[float]` in `src/clients/embedding.py`, called
+at the write site. Deliberately an element-wise comprehension, not `ndarray.tolist()` —
+numpy's stubs type `tolist()` as `Any`, which would have produced a boundary that type-checks
+nothing. Verified: assigning the result to `list[str]` is a mypy error, so the boundary is
+real. Rejected alternatives: widening the column annotation to accept ndarray (it would lie
+about reads, which are always `list`, and would destroy the one check that does work), and
+changing `get_embedding` to return a list (numpy is the right representation for the cosine
+helpers).
+
+Note on terminology: this is a type conversion, not numeric normalization. L2 normalization
+is genuinely unnecessary for `<=>` / `cosine_distance`, but would become required if the
+retrieval path ever switches to `<#>` / `max_inner_product`.
+
 ## Still open after this branch
 - Two containers both claim port 5433 (`postgres-vector` on pgvector/pg18 and `postgres` on
   `postgres:16.2`); only the pgvector one is actually bound. The stale duplicate is a
