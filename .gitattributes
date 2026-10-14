@@ -1,0 +1,8 @@
+# Line endings: LF in the index and in the working tree, on every platform.
+# Without this, checkout behaviour depends on each developer's core.autocrlf
+# (true on this machine), which is how .gitignore ended up CRLF locally while
+# everything else in the index was LF.
+* text=auto eol=lf
+
+# Compiled bytecode is never text.
+*.pyc binary
