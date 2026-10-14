@@ -27,7 +27,11 @@ class ClassificationLog(Base):
     latency_ms: Mapped[int] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    corrections: Mapped[list["Correction"]] = relationship(back_populates="original_classification")
+    corrections: Mapped[list["Correction"]] = relationship(
+        back_populates="original_classification",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         CheckConstraint("router_decision IN (1, 2, 3)", name="ck_router_decision"),

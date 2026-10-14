@@ -146,10 +146,12 @@ needed only if per-row ordering within a batch ever mattered.
 - Two containers both claim port 5433 (`postgres-vector` on pgvector/pg18 and `postgres` on
   `postgres:16.2`); only the pgvector one is actually bound. The stale duplicate is a
   footgun worth removing.
-- `Correction.original_classification` has no `passive_deletes=True` while the FK carries
-  `ondelete="CASCADE"`. On an ORM-level delete SQLAlchemy will try to NULL a NOT NULL
-  column instead of letting Postgres cascade. Not yet reachable — nothing deletes — but it
-  will fire the first time the feedback loop prunes a classification.
+- ~~Missing `passive_deletes` on the `corrections` relationship~~ — **fixed.** The ORM now
+  carries `cascade="all, delete-orphan", passive_deletes=True`, so a parent delete defers to
+  the database's `ON DELETE CASCADE` rather than trying to NULL a NOT NULL column, and
+  detaching a child deletes it. Proven by round-trip against the live database: inserting a
+  classification with one correction, deleting the parent, and observing both rows gone with
+  no `IntegrityError` and the 15 seeded rows untouched. ORM-side only; no migration.
 - `actual_tier_used` and `escalated_reason` are `nullable=True` but annotated
   `Mapped[int]` / `Mapped[str]` rather than `| None`.
 - `compare_server_default` is not enabled in `migrations/env.py`, so `--autogenerate` will
