@@ -31,7 +31,7 @@ Dependencies are managed with `uv` against `uv.lock`. Always run through `uv run
 uv sync --frozen                                  # install from the lockfile
 uv run alembic upgrade head                       # apply migrations
 uv run alembic revision --autogenerate -m "msg"   # new migration from ORM changes
-uv run python seeds/seed_reference_library.py     # seed the reference library
+uv run python -m seeds.seed_reference_library     # seed the reference library
 
 uv run ruff check --fix .                         # lint
 uv run ruff format .                              # format (line length 120)
@@ -61,6 +61,11 @@ Config is a pydantic-settings singleton: `from src.config import settings`. Attr
 Always root-relative `src.*` — `from src.config import settings`, `from src.models import Base`.
 `src/` is an implicit namespace package with no `__init__.py`, and `alembic.ini` sets
 `prepend_sys_path = .`, so the project root is what must be on `sys.path`.
+
+**Run scripts with `-m`, never by path.** `python seeds/seed_reference_library.py` fails with
+`ModuleNotFoundError: No module named 'src'`, because invoking a script by path puts that
+script's own directory on `sys.path[0]` instead of the project root. `python -m
+seeds.seed_reference_library` puts the working directory on the path and resolves `src.*`.
 
 Never write src-root-relative imports (`from config import settings`, `from clients.embedding
 import ...`). `.idea/nescio-agents.iml` marks `src` as a source root, so PyCharm puts both the root
