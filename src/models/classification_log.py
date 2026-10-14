@@ -14,23 +14,24 @@ if TYPE_CHECKING:
 class ClassificationLog(Base):
     __tablename__ = "classification_logs"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True, init=False)
     prompt_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(1024), nullable=False)
     router_decision: Mapped[int] = mapped_column(nullable=False)
     router_method: Mapped[str] = mapped_column(nullable=False)
     confidence_score: Mapped[float] = mapped_column(nullable=False)
-    actual_tier_used: Mapped[int] = mapped_column(nullable=True)
+    actual_tier_used: Mapped[int | None] = mapped_column(nullable=True, default=None, kw_only=True)
     escalated: Mapped[bool] = mapped_column(nullable=False)
-    escalated_reason: Mapped[str] = mapped_column(Text, nullable=True)
-    user_override: Mapped[bool] = mapped_column(default=False)
+    escalated_reason: Mapped[str | None] = mapped_column(Text, nullable=True, default=None, kw_only=True)
+    user_override: Mapped[bool] = mapped_column(default=False, kw_only=True)
     latency_ms: Mapped[int] = mapped_column(nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), init=False)
 
     corrections: Mapped[list["Correction"]] = relationship(
         back_populates="original_classification",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        default_factory=list,
     )
 
     __table_args__ = (
