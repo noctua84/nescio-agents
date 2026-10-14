@@ -114,10 +114,46 @@ sat unstaged in the working tree. The edits themselves were all correct — but 
 git state was wrong, which is why commit position and index state get verified directly
 rather than taken from a report.
 
+## End-to-end verification — PASSED
+
+The maintainer started `pgvector/pgvector:0.8.6-pg18-trixie` on 5433 and Ollama on 11434,
+which allowed the first real run and immediately exposed three further defects that ruff,
+mypy and import checks could not see:
+
+7. `python seeds/seed_reference_library.py` fails with `ModuleNotFoundError: No module named
+   'src'`. Invoking a script by path puts the script's own directory on `sys.path[0]`, not
+   the project root. The agents' acceptance checks used `python -c "import seeds..."`, which
+   does put the CWD on the path — so importability was proven while executability was not.
+   Correct invocation is `python -m seeds.seed_reference_library`; CLAUDE.md was wrong and is
+   fixed.
+8. `ClassificationLog.corrections` used `back_populates="original_classification"` against a
+   `Correction` class that had only the FK column. Mapper configuration raised
+   `InvalidRequestError` on the first ORM instantiation, making every table unwritable.
+9. All three models used `default=datetime.now(tz=UTC)`, evaluated once at import time, so
+   every row from a process carried that process's start timestamp. Silent; nothing failed.
+   Now `server_default=func.now()` plus migration `474e08917fca`.
+
+Final state: `alembic upgrade head` → `474e08917fca`; `configure_mappers()` clean with both
+relationships; seeder inserted 15 rows, `vector_dims = 1024`, `created_at` non-null and
+server-stamped, no all-zero embeddings; a second run aborted with exit 1 and left the row
+count at 15. `ruff check`, `ruff format --check` and `mypy` all green.
+
+Note: all 15 rows share one `created_at`, which is correct — Postgres `now()` is
+transaction-start time and the inserts were one transaction. `clock_timestamp()` would be
+needed only if per-row ordering within a batch ever mattered.
+
 ## Still open after this branch
-- **Nothing runs end-to-end yet.** Port 5433 has no listener; Docker exposes
-  `postgres:16-alpine` and `postgres:16.2` on 32768, neither a pgvector image; Ollama is not
-  running. Decide whether to stand up a pgvector container on 5433 or re-point `DB_URL`.
+- Two containers both claim port 5433 (`postgres-vector` on pgvector/pg18 and `postgres` on
+  `postgres:16.2`); only the pgvector one is actually bound. The stale duplicate is a
+  footgun worth removing.
+- `Correction.original_classification` has no `passive_deletes=True` while the FK carries
+  `ondelete="CASCADE"`. On an ORM-level delete SQLAlchemy will try to NULL a NOT NULL
+  column instead of letting Postgres cascade. Not yet reachable — nothing deletes — but it
+  will fire the first time the feedback loop prunes a classification.
+- `actual_tier_used` and `escalated_reason` are `nullable=True` but annotated
+  `Mapped[int]` / `Mapped[str]` rather than `| None`.
+- `compare_server_default` is not enabled in `migrations/env.py`, so `--autogenerate` will
+  not notice server-default drift.
 - No tests exist. The cosine helpers in `src/clients/embedding.py` and the `Settings` loader
   are testable without Postgres or Ollama and are the cheapest starting point.
 - Embedding dimension 1024 is still duplicated between the ORM model and the migration with
