@@ -10,13 +10,13 @@ from src.models import Base
 class ReferenceLibrary(Base):
     __tablename__ = "reference_library"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[int] = mapped_column(primary_key=True, init=False)
     prompt_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(Vector(1024), nullable=False)
     tier: Mapped[int] = mapped_column(nullable=False)
     confidence: Mapped[float] = mapped_column(nullable=False)
     source: Mapped[str] = mapped_column(nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), init=False)
 
     __table_args__ = (
         Index("ix_reference_library_created_at", created_at),

@@ -189,3 +189,43 @@ retrieval path ever switches to `<#>` / `max_inner_product`.
   are testable without Postgres or Ollama and are the cheapest starting point.
 - Embedding dimension 1024 is still duplicated between the ORM model and the migration with
   no runtime assertion.
+
+---
+
+## Follow-up branch: `refactor/typed-model-constructors`
+
+Closes the structural hole behind defect 11. `Base` is now
+`MappedAsDataclass, DeclarativeBase, kw_only=True, eq=False`, so every model has a
+mypy-checked `__init__`.
+
+Validated empirically before adopting, because the SQLAlchemy docs' only version anchor is
+"mypy 1.2" — three major versions behind this project's mypy 2.4.0, and mypy 1.1.1 is a
+documented case of PEP 681 descriptor handling breaking:
+
+- mypy 2.4.0 **does** honour `dataclass_transform`. On the real models it now rejects
+  `ReferenceLibrary(embedding=np.zeros(1024))`, `tier="banana"`, omitted required kwargs, and
+  `id=`/`created_at=` passed to `init=False` fields. Previously all four passed silently.
+- pgvector's `Vector` coexists with dataclass mapping.
+- **Emitted DDL is byte-identical** (diffed against a pre-change snapshot of
+  `CreateTable` for all three tables), so no migration is implied.
+- `cascade="all, delete-orphan"` and `passive_deletes=True` survive; the cascade round-trip
+  against the live database still passes.
+- `eq=False` is mandatory. Without it the generated `__eq__` makes distinct-but-equal rows
+  compare equal and renders instances **unhashable** (`TypeError: unhashable type`), which
+  would break `set`/dict use. Verified that `eq=False` keeps the typed `__init__`.
+
+**Non-obvious gotcha, verified by removing it and watching mypy fail:** a column carrying a
+`default` that is declared *before* a column without one needs its own `kw_only=True` on the
+`mapped_column(...)`. The class-level `kw_only=True` satisfies the runtime but not mypy's
+dataclass field-ordering check, which otherwise reports "Attributes without a default cannot
+follow attributes with one". Three columns in `classification_log.py` need it. The
+alternative — reordering columns — would change `CREATE TABLE` output.
+
+Side effect: this forced the `actual_tier_used` / `escalated_reason` fix. They were
+`nullable=True` but annotated `Mapped[int]` / `Mapped[str]`; giving them `default=None`
+required `| None`, so that open finding is now closed too.
+
+`Correction.original_classification` is **required** by maintainer decision — no default,
+annotation stays non-optional. The NOT NULL FK invariant is now expressed in the type system,
+and the FK column itself is `init=False` so the relationship is the only way to set the
+parent (sqlalchemy#11639).
